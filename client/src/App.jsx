@@ -20,6 +20,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log("1. Botón presionado. Enviando datos a:", `http://localhost:3000${isLogin ? '/api/login' : '/api/register'}`); // <--- AGREGA ESTO
     setError(''); setSuccess('');
     if (!isLogin && !formData.email.endsWith('@tecmilenio.mx')) { setError('⚠️ Usa correo @tecmilenio.mx'); return; }
     const endpoint = isLogin ? '/api/login' : '/api/register';

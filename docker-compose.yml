@@ -28,6 +28,8 @@ services:
       - /app/node_modules
     depends_on:
       - db
+    env_file:
+      - ./server/.env
     environment:
       DB_HOST: db
       DB_USER: tec_user
