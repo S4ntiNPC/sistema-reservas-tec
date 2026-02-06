@@ -221,9 +221,68 @@ app.post('/api/reservas', async (req, res) => {
     }
 });
 
-// Rutas PUT y DELETE (Igual que antes...)
-app.put('/api/reservas/:id', async (req, res) => { /* ... Tu código PUT ... */ });
-app.delete('/api/reservas/:id', async (req, res) => { /* ... Tu código DELETE ... */ });
+// --- RUTAS PUT Y DELETE (RESTAURADAS) ---
+
+// EDITAR RESERVA (PUT)
+app.put('/api/reservas/:id', async (req, res) => {
+    const { id } = req.params;
+    const { sala_id, titulo, inicio, fin, requerimientos } = req.body;
+
+    console.log(`📝 Petición de edición para ID: ${id}`);
+
+    try {
+        const connection = await mysql.createConnection(dbConfig);
+        
+        // 1. Validar choque (EXCLUYENDO la reserva actual con "AND id != ?")
+        // Esto es vital: si no pones "id != ?", el sistema pensará que choca consigo misma.
+        const [existentes] = await connection.execute(`
+            SELECT * FROM reservaciones 
+            WHERE sala_id = ? AND estado = 'confirmada' AND id != ?
+            AND ((fecha_inicio < ? AND fecha_fin > ?))
+        `, [sala_id, id, fin, inicio]);
+
+        if (existentes.length > 0) {
+            console.log("❌ Choque de horario al editar");
+            await connection.end();
+            return res.status(409).json({ error: '¡El nuevo horario choca con otro evento!' });
+        }
+
+        // 2. Actualizar
+        await connection.execute(`
+            UPDATE reservaciones 
+            SET sala_id = ?, titulo_evento = ?, fecha_inicio = ?, fecha_fin = ?, requerimientos_fisicos = ?
+            WHERE id = ?
+        `, [sala_id, titulo, inicio, fin, requerimientos, id]);
+
+        await connection.end();
+        console.log("✅ Edición exitosa");
+        res.json({ message: 'Actualizado correctamente' });
+
+    } catch (error) { 
+        console.error("🔥 Error al actualizar:", error); 
+        res.status(500).json({ error: 'Error al actualizar' }); 
+    }
+});
+
+// ELIMINAR RESERVA (DELETE)
+app.delete('/api/reservas/:id', async (req, res) => {
+    const { id } = req.params;
+    console.log(`🗑️ Petición de eliminar para ID: ${id}`);
+
+    try {
+        const connection = await mysql.createConnection(dbConfig);
+        
+        await connection.execute('DELETE FROM reservaciones WHERE id = ?', [id]);
+        
+        await connection.end();
+        console.log("✅ Eliminación exitosa");
+        res.json({ message: 'Eliminado correctamente' });
+
+    } catch (error) { 
+        console.error("🔥 Error al eliminar:", error); 
+        res.status(500).json({ error: 'Error al eliminar' }); 
+    }
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT} 🚀`));
