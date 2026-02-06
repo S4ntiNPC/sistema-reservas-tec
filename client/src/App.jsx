@@ -10,6 +10,7 @@ import logoTec from './assets/logo-tec.png';
 
 const locales = { 'es': es }
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales })
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 // --- COMPONENTE LOGIN (Sin cambios) ---
 const LoginScreen = ({ onLoginSuccess }) => {
@@ -20,12 +21,11 @@ const LoginScreen = ({ onLoginSuccess }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("1. Botón presionado. Enviando datos a:", `http://localhost:3000${isLogin ? '/api/login' : '/api/register'}`); // <--- AGREGA ESTO
     setError(''); setSuccess('');
     if (!isLogin && !formData.email.endsWith('@tecmilenio.mx')) { setError('⚠️ Usa correo @tecmilenio.mx'); return; }
     const endpoint = isLogin ? '/api/login' : '/api/register';
     try {
-      const res = await axios.post(`http://localhost:3000${endpoint}`, formData);
+      const res = await axios.post(`${API_URL}${endpoint}`, formData);
       if (isLogin) onLoginSuccess(res.data);
       else { setSuccess('¡Cuenta activada!'); setIsLogin(true); setFormData({ ...formData, password: '' }); }
     } catch (err) { setError(err.response?.data?.error || 'Error'); }
@@ -88,7 +88,7 @@ function App() {
 
   const cargarReservas = async () => {
     try {
-      const res = await axios.get('http://localhost:3000/api/reservas');
+      const res = await axios.get(`${API_URL}/api/reservas`);
       setEventos(res.data.map(r => ({
         id: r.id, // IMPORTANTE: Guardamos el ID para poder editar/borrar
         title: `${r.titulo_evento} (${r.nombre_sala})`,
@@ -114,11 +114,11 @@ function App() {
     try {
       if (modoEdicion) {
         // ACTUALIZAR (PUT)
-        await axios.put(`http://localhost:3000/api/reservas/${idEventoEdicion}`, payload);
+        await axios.put(`${API_URL}/api/reservas/${idEventoEdicion}`, payload);
         alert('¡Evento actualizado!');
       } else {
         // CREAR (POST)
-        await axios.post('http://localhost:3000/api/reservas', payload);
+        await axios.post(`${API_URL}/api/reservas`, payload);
         alert('¡Reserva creada!');
       }
       setMostrarModal(false); cargarReservas(); limpiarForm();
@@ -129,7 +129,7 @@ function App() {
   const eliminarReserva = async () => {
     if (!window.confirm("¿Estás seguro de que quieres eliminar este evento? Esta acción no se puede deshacer.")) return;
     try {
-      await axios.delete(`http://localhost:3000/api/reservas/${eventoSeleccionado.id}`);
+      await axios.delete(`${API_URL}/api/reservas/${eventoSeleccionado.id}`);
       alert("Evento eliminado");
       setEventoSeleccionado(null);
       cargarReservas();

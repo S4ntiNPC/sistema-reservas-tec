@@ -19,14 +19,9 @@ const dbConfig = {
     user: process.env.DB_USER || 'tec_user',
     password: process.env.DB_PASSWORD || 'tec_password',
     database: process.env.DB_NAME || 'sistema_reservas_tec',
-    port: process.env.DB_PORT || 3306 
+    port: process.env.DB_PORT || 3306,
+    ssl: process.env.DB_HOST === 'localhost' || process.env.DB_HOST === 'db' || process.env.DB_HOST === 'reservas_db' ? false : { rejectUnauthorized: false }
 };
-
-console.log("---------------------------------------------------");
-console.log("🔌 INTENTANDO CONECTAR A LA BASE DE DATOS:");
-console.log("   HOST:", dbConfig.host); // Debería decir 'reservas_db'
-console.log("   USER:", dbConfig.user);
-console.log("---------------------------------------------------");
 
 // --- CONFIGURACIÓN DEL CORREO (El "Robot" que envía) ---
 const transporter = nodemailer.createTransport({
