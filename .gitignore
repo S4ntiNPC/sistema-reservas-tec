@@ -1,0 +1,19 @@
+# Dependencias de Node (nunca se suben)
+node_modules/
+**/node_modules/
+
+# Archivos de entorno (seguridad)
+.env
+**/.env
+
+# Archivos de construcción (builds)
+dist/
+build/
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Logs de Docker o npm
+*.log
+npm-debug.log*

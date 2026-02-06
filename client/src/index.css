@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import 'react-big-calendar/lib/css/react-big-calendar.css';
+
+body {
+  @apply bg-tec-gris-claro text-tec-texto; /* Fondo gris muy suave */
+  height: 100vh;
+}
+
+/* --- Ajustes sutiles para armonía --- */
+
+/* Bordes más suaves en el calendario */
+.rbc-calendar {
+    @apply font-sans;
+}
+
+.rbc-header {
+    @apply py-4 text-tec-azul uppercase text-xs font-bold tracking-wider border-b-2 border-gray-100;
+}
+
+.rbc-today {
+    @apply bg-blue-50; /* Resaltar sutilmente el día de hoy */
+}
+
+.rbc-event {
+    @apply shadow-sm; /* Sombra suave a los eventos */
+}

@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # Servicio de Base de Datos
+  db:
+    image: mysql:8.0
+    container_name: reservas_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: sistema_reservas_tec
+      MYSQL_USER: tec_user
+      MYSQL_PASSWORD: tec_password
+    ports:
+      - "3307:3306" # Mapeamos al 3307 para no chocar si ya tienes MySQL local
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql # Carga el script inicial
+      - mysql_data:/var/lib/mysql
+
+  # Servicio de Backend (API)
+  api:
+    build: ./server
+    container_name: reservas_api
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db
+      DB_USER: tec_user
+      DB_PASSWORD: tec_password
+      DB_NAME: sistema_reservas_tec
+      PORT: 3000
+    command: npm run dev
+
+volumes:
+  mysql_data:
