@@ -27,11 +27,14 @@ const dbConfig = {
 
 // --- CONFIGURACIÓN DEL CORREO (El "Robot" que envía) ---
 const transporter = nodemailer.createTransport({
-    service: 'gmail', // O 'outlook' o 'hotmail'
+    host: "smtp.gmail.com", // Definimos el host explícitamente
+    port: 465,              // Puerto seguro SSL
+    secure: true,           // Usar SSL
     auth: {
-        user: process.env.EMAIL_USER, 
-        pass: process.env.EMAIL_PASS  
-    }
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    },
+    family: 4 
 });
 
 // Función auxiliar para enviar el correo a Omar
@@ -233,7 +236,7 @@ app.put('/api/reservas/:id', async (req, res) => {
     if (new Date(inicio) >= new Date(fin)) {
         return res.status(400).json({ error: 'La fecha de fin debe ser posterior a la de inicio' });
     }
-    
+
     try {
         const connection = await mysql.createConnection(dbConfig);
         
