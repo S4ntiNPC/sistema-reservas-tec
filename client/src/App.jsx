@@ -51,7 +51,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
   );
 };
 
-// --- BARRA CALENDARIO (Sin cambios) ---
+// --- BARRA CALENDARIO ---
 const CustomToolbar = ({ onNavigate, onView, label, view }) => {
   const isActive = (v) => view === v ? 'bg-tec-verde text-white' : 'text-gray-500 hover:bg-gray-100';
   return (
@@ -74,13 +74,11 @@ function App() {
   const [eventos, setEventos] = useState([]);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [eventoSeleccionado, setEventoSeleccionado] = useState(null); 
-  
-  // Estado para controlar si estamos editando
   const [modoEdicion, setModoEdicion] = useState(false); 
   const [idEventoEdicion, setIdEventoEdicion] = useState(null);
-
   const [date, setDate] = useState(new Date());
   const [view, setView] = useState(Views.MONTH);
+
   const onNavigate = useCallback((d) => setDate(d), []);
   const onView = useCallback((v) => setView(v), []);
 
@@ -92,12 +90,9 @@ function App() {
     try {
       const res = await axios.get(`${API_URL}/api/reservas`);
       setEventos(res.data.map(r => {
-        // CORRECCIÓN 1: Manejo de fechas para evitar desfase
-        // Convertimos el string de fecha (ej: "2026-02-07 10:00:00") a un formato compatible
-        // Replace ' ' con 'T' ayuda a Safari/Mobile, pero aquí lo importante es guardar el string original
+        // Fix de zona horaria: Convertimos string a date manual
         const fechaInicioObj = new Date(r.fecha_inicio.replace(' ', 'T'));
         const fechaFinObj = new Date(r.fecha_fin.replace(' ', 'T'));
-
         return {
           id: r.id, 
           title: `${r.titulo_evento} (${r.nombre_sala})`,
@@ -107,11 +102,9 @@ function App() {
           responsable: r.responsable, 
           requerimientos: r.requerimientos_fisicos, 
           salaReal: r.nombre_sala,
-          
-          // DATOS PUROS PARA EDICIÓN (SOLUCIÓN AL ERROR DE HORA)
           tituloOriginal: r.titulo_evento, 
           salaIdOriginal: r.sala_id,
-          startStr: r.fecha_inicio, // Guardamos "2026-02-07 10:00:00" tal cual
+          startStr: r.fecha_inicio, 
           endStr: r.fecha_fin
         };
       }));
@@ -123,29 +116,30 @@ function App() {
   // --- GUARDAR (CREAR O EDITAR) ---
   const guardarReserva = async (e) => {
     e.preventDefault();
-    const startString = `${nuevaReserva.fecha} ${nuevaReserva.horaInicio}:00`;
-    const endString = `${nuevaReserva.fecha} ${nuevaReserva.horaFin}:00`;
+    
+    // VALIDACIÓN NUEVA: Evitar fechas incoherentes en Frontend
     if (nuevaReserva.horaInicio >= nuevaReserva.horaFin) {
         alert("⚠️ Error: La hora de fin debe ser DESPUÉS de la hora de inicio.");
-        return; // ¡Detiene la función aquí! No envía nada.
+        return;
     }
+
+    const startString = `${nuevaReserva.fecha} ${nuevaReserva.horaInicio}:00`;
+    const endString = `${nuevaReserva.fecha} ${nuevaReserva.horaFin}:00`;
     
     const payload = {
       sala_id: nuevaReserva.sala_id, 
       titulo: nuevaReserva.titulo, 
       responsable: usuario.nombre_completo,
-      inicio: startString, // Enviamos String plano
+      inicio: startString, 
       fin: endString, 
       requerimientos: nuevaReserva.requerimientos
     };
 
     try {
       if (modoEdicion) {
-        // ACTUALIZAR (PUT)
         await axios.put(`${API_URL}/api/reservas/${idEventoEdicion}`, payload);
         alert('¡Evento actualizado!');
       } else {
-        // CREAR (POST)
         await axios.post(`${API_URL}/api/reservas`, payload);
         alert('¡Reserva creada!');
       }
@@ -153,7 +147,6 @@ function App() {
     } catch (error) { alert(error.response?.data?.error || 'Error'); }
   };
 
-  // --- ELIMINAR ---
   const eliminarReserva = async () => {
     if (!window.confirm("¿Estás seguro de que quieres eliminar este evento?")) return;
     try {
@@ -164,45 +157,27 @@ function App() {
     } catch (error) { alert("Error al eliminar"); }
   };
 
-  // --- PREPARAR EDICIÓN (AQUÍ ESTÁ LA MAGIA 🪄) ---
   const iniciarEdicion = () => {
     const ev = eventoSeleccionado;
-    
-    // CORRECCIÓN 2: Extraer hora del string original en lugar del objeto Date
-    // Formato esperado backend: "YYYY-MM-DD HH:mm:ss"
-    // Si usasemos 'format(ev.start)' aquí, el navegador le restaría 6 horas.
-    // Al usar .split y substring del string original, mantenemos la hora intacta.
-    
     let fechaRaw, horaInicioRaw, horaFinRaw;
-
+    // Lógica para mantener la hora exacta (evitar restas de zona horaria)
     if (ev.startStr && ev.endStr) {
-        // Si tenemos el string original (viene del Backend)
-        const partesInicio = ev.startStr.split(' '); // Separa fecha y hora
+        const partesInicio = ev.startStr.split(' ');
         const partesFin = ev.endStr.split(' ');
-        
-        fechaRaw = partesInicio[0]; // "2026-02-07"
-        horaInicioRaw = partesInicio[1].substring(0, 5); // "10:00"
-        horaFinRaw = partesFin[1].substring(0, 5); // "12:00"
+        fechaRaw = partesInicio[0];
+        horaInicioRaw = partesInicio[1].substring(0, 5);
+        horaFinRaw = partesFin[1].substring(0, 5);
     } else {
-        // Fallback por si acaso falla el string (modo seguro)
         fechaRaw = format(ev.start, 'yyyy-MM-dd');
         horaInicioRaw = format(ev.start, 'HH:mm');
         horaFinRaw = format(ev.end, 'HH:mm');
     }
-
     setNuevaReserva({
-      titulo: ev.tituloOriginal,
-      sala_id: ev.salaIdOriginal,
-      fecha: fechaRaw,
-      horaInicio: horaInicioRaw,
-      horaFin: horaFinRaw,
-      requerimientos: ev.requerimientos
+      titulo: ev.tituloOriginal, sala_id: ev.salaIdOriginal, fecha: fechaRaw,
+      horaInicio: horaInicioRaw, horaFin: horaFinRaw, requerimientos: ev.requerimientos
     });
-    
-    setModoEdicion(true);
-    setIdEventoEdicion(ev.id);
-    setEventoSeleccionado(null); 
-    setMostrarModal(true); 
+    setModoEdicion(true); setIdEventoEdicion(ev.id);
+    setEventoSeleccionado(null); setMostrarModal(true); 
   };
 
   const limpiarForm = () => {
@@ -234,12 +209,16 @@ function App() {
             date={date} view={view} onNavigate={onNavigate} onView={onView} components={{ toolbar: CustomToolbar }}
             messages={{ today: "Hoy", month: "Mes", week: "Semana", day: "Día", agenda: "Agenda" }}
             onSelectEvent={setEventoSeleccionado}
-            eventPropGetter={(event) => ({ style: { backgroundColor: event.resource === 'SUM' ? '#002F5D' : '#8DBD3E', color: '#fff', borderRadius: '6px', fontSize: '0.9em', border: 'none' } })}
+            // FIX DE COLORES: Usamos .includes para detectar "Sala SUM" o "SUM"
+            eventPropGetter={(event) => {
+              const esSUM = event.resource && event.resource.includes('SUM');
+              return { style: { backgroundColor: esSUM ? '#002F5D' : '#8DBD3E', color: '#fff', borderRadius: '6px', fontSize: '0.9em', border: 'none' } };
+            }}
           />
         </div>
       </main>
 
-      {/* MODAL FORMULARIO (CREAR / EDITAR) */}
+      {/* MODAL FORMULARIO */}
       {mostrarModal && (
         <div className="fixed inset-0 bg-tec-azul bg-opacity-50 flex justify-center items-center z-50 backdrop-blur-sm">
           <div className="bg-white p-8 rounded-2xl shadow-2xl w-[500px] border-t-8 border-tec-verde animate-fade-in-up">
@@ -268,7 +247,7 @@ function App() {
       {eventoSeleccionado && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in-up">
-            <div className={`p-6 ${eventoSeleccionado.resource === 'SUM' ? 'bg-tec-azul' : 'bg-tec-verde'} text-white`}>
+            <div className={`p-6 ${eventoSeleccionado.resource && eventoSeleccionado.resource.includes('SUM') ? 'bg-tec-azul' : 'bg-tec-verde'} text-white`}>
               <h3 className="text-2xl font-bold">{eventoSeleccionado.title}</h3>
               <p className="opacity-90 font-medium mt-1">{eventoSeleccionado.salaReal}</p>
             </div>
@@ -280,8 +259,6 @@ function App() {
             
             <div className="p-4 bg-gray-50 flex justify-between items-center border-t border-gray-100">
               <button className="text-gray-500 font-medium hover:text-gray-700" onClick={() => setEventoSeleccionado(null)}>Cerrar</button>
-              
-              {/* Solo mostrar acciones si el usuario es el responsable */}
               {usuario.nombre_completo === eventoSeleccionado.responsable && (
                 <div className="flex gap-2">
                   <button onClick={eliminarReserva} className="px-4 py-2 bg-red-100 text-red-600 font-bold rounded-lg hover:bg-red-200 transition">🗑 Eliminar</button>
