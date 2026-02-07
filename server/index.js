@@ -27,16 +27,17 @@ const dbConfig = {
 
 // --- CONFIGURACIÓN DEL CORREO (El "Robot" que envía) ---
 const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com", // Definimos el host explícitamente
-    port: 465,              // Puerto seguro SSL
-    secure: true,           // Usar SSL
+    host: "smtp.gmail.com",
+    port: 587,             
+    secure: false,        
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
     },
-    family: 4 
+    tls: {
+        rejectUnauthorized: false
+    }
 });
-
 // Función auxiliar para enviar el correo a Omar
 async function enviarCorreoOmar(detalles) {
     const { titulo, sala, inicio, fin, responsable, requerimientos } = detalles;
