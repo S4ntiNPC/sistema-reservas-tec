@@ -125,6 +125,10 @@ function App() {
     e.preventDefault();
     const startString = `${nuevaReserva.fecha} ${nuevaReserva.horaInicio}:00`;
     const endString = `${nuevaReserva.fecha} ${nuevaReserva.horaFin}:00`;
+    if (nuevaReserva.horaInicio >= nuevaReserva.horaFin) {
+        alert("⚠️ Error: La hora de fin debe ser DESPUÉS de la hora de inicio.");
+        return; // ¡Detiene la función aquí! No envía nada.
+    }
     
     const payload = {
       sala_id: nuevaReserva.sala_id, 

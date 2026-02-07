@@ -173,6 +173,10 @@ app.post('/api/reservas', async (req, res) => {
     
     if (!sala_id || !titulo || !responsable || !inicio || !fin) return res.status(400).json({ error: 'Faltan datos' });
 
+    if (new Date(inicio) >= new Date(fin)) {
+        return res.status(400).json({ error: 'La fecha de fin debe ser posterior a la de inicio' });
+    }
+
     try {
         const connection = await mysql.createConnection(dbConfig);
         const [existentes] = await connection.execute(`
@@ -226,8 +230,10 @@ app.put('/api/reservas/:id', async (req, res) => {
     const { id } = req.params;
     const { sala_id, titulo, inicio, fin, requerimientos } = req.body;
 
-    console.log(`📝 Petición de edición para ID: ${id}`);
-
+    if (new Date(inicio) >= new Date(fin)) {
+        return res.status(400).json({ error: 'La fecha de fin debe ser posterior a la de inicio' });
+    }
+    
     try {
         const connection = await mysql.createConnection(dbConfig);
         
