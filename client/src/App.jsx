@@ -7,7 +7,9 @@ import getDay from 'date-fns/getDay';
 import es from 'date-fns/locale/es';
 import axios from 'axios';
 import logoTec from './assets/logo-tec.png'; 
+import 'react-big-calendar/lib/css/react-big-calendar.css';
 
+// Configuración de Idioma
 const locales = { 'es': es }
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales })
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -89,13 +91,30 @@ function App() {
   const cargarReservas = async () => {
     try {
       const res = await axios.get(`${API_URL}/api/reservas`);
-      setEventos(res.data.map(r => ({
-        id: r.id, // IMPORTANTE: Guardamos el ID para poder editar/borrar
-        title: `${r.titulo_evento} (${r.nombre_sala})`,
-        start: new Date(r.fecha_inicio), end: new Date(r.fecha_fin),
-        resource: r.nombre_sala, responsable: r.responsable, requerimientos: r.requerimientos_fisicos, salaReal: r.nombre_sala,
-        tituloOriginal: r.titulo_evento, salaIdOriginal: r.sala_id // Datos puros para rellenar form
-      })));
+      setEventos(res.data.map(r => {
+        // CORRECCIÓN 1: Manejo de fechas para evitar desfase
+        // Convertimos el string de fecha (ej: "2026-02-07 10:00:00") a un formato compatible
+        // Replace ' ' con 'T' ayuda a Safari/Mobile, pero aquí lo importante es guardar el string original
+        const fechaInicioObj = new Date(r.fecha_inicio.replace(' ', 'T'));
+        const fechaFinObj = new Date(r.fecha_fin.replace(' ', 'T'));
+
+        return {
+          id: r.id, 
+          title: `${r.titulo_evento} (${r.nombre_sala})`,
+          start: fechaInicioObj, 
+          end: fechaFinObj,
+          resource: r.nombre_sala, 
+          responsable: r.responsable, 
+          requerimientos: r.requerimientos_fisicos, 
+          salaReal: r.nombre_sala,
+          
+          // DATOS PUROS PARA EDICIÓN (SOLUCIÓN AL ERROR DE HORA)
+          tituloOriginal: r.titulo_evento, 
+          salaIdOriginal: r.sala_id,
+          startStr: r.fecha_inicio, // Guardamos "2026-02-07 10:00:00" tal cual
+          endStr: r.fecha_fin
+        };
+      }));
     } catch (e) { console.error(e); }
   };
 
@@ -106,9 +125,14 @@ function App() {
     e.preventDefault();
     const startString = `${nuevaReserva.fecha} ${nuevaReserva.horaInicio}:00`;
     const endString = `${nuevaReserva.fecha} ${nuevaReserva.horaFin}:00`;
+    
     const payload = {
-      sala_id: nuevaReserva.sala_id, titulo: nuevaReserva.titulo, responsable: usuario.nombre_completo,
-      inicio: startString, fin: endString, requerimientos: nuevaReserva.requerimientos
+      sala_id: nuevaReserva.sala_id, 
+      titulo: nuevaReserva.titulo, 
+      responsable: usuario.nombre_completo,
+      inicio: startString, // Enviamos String plano
+      fin: endString, 
+      requerimientos: nuevaReserva.requerimientos
     };
 
     try {
@@ -127,7 +151,7 @@ function App() {
 
   // --- ELIMINAR ---
   const eliminarReserva = async () => {
-    if (!window.confirm("¿Estás seguro de que quieres eliminar este evento? Esta acción no se puede deshacer.")) return;
+    if (!window.confirm("¿Estás seguro de que quieres eliminar este evento?")) return;
     try {
       await axios.delete(`${API_URL}/api/reservas/${eventoSeleccionado.id}`);
       alert("Evento eliminado");
@@ -136,21 +160,45 @@ function App() {
     } catch (error) { alert("Error al eliminar"); }
   };
 
-  // --- PREPARAR EDICIÓN ---
+  // --- PREPARAR EDICIÓN (AQUÍ ESTÁ LA MAGIA 🪄) ---
   const iniciarEdicion = () => {
     const ev = eventoSeleccionado;
+    
+    // CORRECCIÓN 2: Extraer hora del string original en lugar del objeto Date
+    // Formato esperado backend: "YYYY-MM-DD HH:mm:ss"
+    // Si usasemos 'format(ev.start)' aquí, el navegador le restaría 6 horas.
+    // Al usar .split y substring del string original, mantenemos la hora intacta.
+    
+    let fechaRaw, horaInicioRaw, horaFinRaw;
+
+    if (ev.startStr && ev.endStr) {
+        // Si tenemos el string original (viene del Backend)
+        const partesInicio = ev.startStr.split(' '); // Separa fecha y hora
+        const partesFin = ev.endStr.split(' ');
+        
+        fechaRaw = partesInicio[0]; // "2026-02-07"
+        horaInicioRaw = partesInicio[1].substring(0, 5); // "10:00"
+        horaFinRaw = partesFin[1].substring(0, 5); // "12:00"
+    } else {
+        // Fallback por si acaso falla el string (modo seguro)
+        fechaRaw = format(ev.start, 'yyyy-MM-dd');
+        horaInicioRaw = format(ev.start, 'HH:mm');
+        horaFinRaw = format(ev.end, 'HH:mm');
+    }
+
     setNuevaReserva({
       titulo: ev.tituloOriginal,
       sala_id: ev.salaIdOriginal,
-      fecha: format(ev.start, 'yyyy-MM-dd'),
-      horaInicio: format(ev.start, 'HH:mm'),
-      horaFin: format(ev.end, 'HH:mm'),
+      fecha: fechaRaw,
+      horaInicio: horaInicioRaw,
+      horaFin: horaFinRaw,
       requerimientos: ev.requerimientos
     });
+    
     setModoEdicion(true);
     setIdEventoEdicion(ev.id);
-    setEventoSeleccionado(null); // Cierra modal detalles
-    setMostrarModal(true); // Abre modal formulario
+    setEventoSeleccionado(null); 
+    setMostrarModal(true); 
   };
 
   const limpiarForm = () => {
@@ -226,11 +274,10 @@ function App() {
               <div className="flex items-start gap-3"><div className="bg-yellow-50 p-2 rounded-full text-yellow-600">🛠</div><div><p className="text-xs font-bold text-gray-400 uppercase">Requerimientos</p><p className="bg-gray-50 p-3 rounded-lg text-sm mt-1 border border-gray-100">{eventoSeleccionado.requerimientos || "Ninguno"}</p></div></div>
             </div>
             
-            {/* PIE DE PÁGINA: ACCIONES */}
             <div className="p-4 bg-gray-50 flex justify-between items-center border-t border-gray-100">
               <button className="text-gray-500 font-medium hover:text-gray-700" onClick={() => setEventoSeleccionado(null)}>Cerrar</button>
               
-              {/* Solo mostrar acciones si el usuario es el responsable (Control de Personas) */}
+              {/* Solo mostrar acciones si el usuario es el responsable */}
               {usuario.nombre_completo === eventoSeleccionado.responsable && (
                 <div className="flex gap-2">
                   <button onClick={eliminarReserva} className="px-4 py-2 bg-red-100 text-red-600 font-bold rounded-lg hover:bg-red-200 transition">🗑 Eliminar</button>

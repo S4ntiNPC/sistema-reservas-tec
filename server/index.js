@@ -5,6 +5,7 @@ const cors = require('cors');
 const nodemailer = require('nodemailer'); // ¡IMPORTANTE!
 require('dotenv').config();
 
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -20,6 +21,7 @@ const dbConfig = {
     password: process.env.DB_PASSWORD || 'tec_password',
     database: process.env.DB_NAME || 'sistema_reservas_tec',
     port: process.env.DB_PORT || 3306,
+    dateStrings: true, // Esto hace que las fechas vengan como strings y no se conviertan a objetos Date
     ssl: process.env.DB_HOST === 'localhost' || process.env.DB_HOST === 'db' || process.env.DB_HOST === 'reservas_db' ? false : { rejectUnauthorized: false }
 };
 
@@ -27,8 +29,8 @@ const dbConfig = {
 const transporter = nodemailer.createTransport({
     service: 'gmail', // O 'outlook' o 'hotmail'
     auth: {
-        user: process.env.EMAIL_USER, // <--- CAMBIA ESTO (Correo del Robot)
-        pass: process.env.EMAIL_PASS   // <--- CAMBIA ESTO (No tu pass normal)
+        user: process.env.EMAIL_USER, 
+        pass: process.env.EMAIL_PASS  
     }
 });
 
@@ -71,8 +73,7 @@ async function enviarCorreoOmar(detalles) {
     }
 }
 
-// --- RUTAS DE AUTENTICACIÓN (Igual que antes) ---
-// server/index.js
+// --- RUTAS DE AUTENTICACIÓN ---
 app.post('/api/register', async (req, res) => {
     const { nombre, email, password } = req.body;
 
@@ -83,7 +84,7 @@ app.post('/api/register', async (req, res) => {
     }
 
     try {
-        // Imprimimos la config (OJO: no mostrar password real en producción)
+        // Imprimimos la config
         console.log(`   -> Host: ${dbConfig.host}, User: ${dbConfig.user}, DB: ${dbConfig.database}`);
         
         const connection = await mysql.createConnection(dbConfig);
@@ -107,16 +108,13 @@ app.post('/api/register', async (req, res) => {
 
     } catch (error) {
         console.error("🔥 ERROR FATAL EN EL SERVIDOR 🔥");
-        console.error(error); // ESTO NOS DIRÁ LA CAUSA EXACTA
+        console.error(error); 
         res.status(500).json({ error: 'Error interno del servidor: ' + error.message });
     }
 });
 
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
-    
-    // Veamos qué datos llegan (OJO: en producción no imprimas passwords)
-    console.log(`🔑 2. Datos recibidos -> Email: '${email}', Password: '${password}'`);
 
     try {
         const connection = await mysql.createConnection(dbConfig);
@@ -133,7 +131,7 @@ app.post('/api/login', async (req, res) => {
             res.json(rows[0]); 
         } else {            
             // Vamos a hacer una búsqueda extra para ver si el correo al menos existe
-            // Esto es solo para depurar y ayudarte a saber si falló el pass o el email
+            // Esto es solo para depurar y ayudar a saber si falló el pass o el email
             const connection2 = await mysql.createConnection(dbConfig);
             const [checkEmail] = await connection2.execute('SELECT * FROM usuarios WHERE email = ?', [email]);
             await connection2.end();
@@ -234,7 +232,6 @@ app.put('/api/reservas/:id', async (req, res) => {
         const connection = await mysql.createConnection(dbConfig);
         
         // 1. Validar choque (EXCLUYENDO la reserva actual con "AND id != ?")
-        // Esto es vital: si no pones "id != ?", el sistema pensará que choca consigo misma.
         const [existentes] = await connection.execute(`
             SELECT * FROM reservaciones 
             WHERE sala_id = ? AND estado = 'confirmada' AND id != ?
