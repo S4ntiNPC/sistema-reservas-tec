@@ -1,8 +1,15 @@
 // server/index.js
+const dns = require('dns');
+try {
+    dns.setDefaultResultOrder('ipv4first'); 
+} catch (error) {
+    console.log("Aviso: Node.js antiguo, no soporta setDefaultResultOrder (no pasa nada)");
+}
 const express = require('express');
 const mysql = require('mysql2/promise');
 const cors = require('cors');
 const nodemailer = require('nodemailer'); // ¡IMPORTANTE!
+
 require('dotenv').config();
 
 
