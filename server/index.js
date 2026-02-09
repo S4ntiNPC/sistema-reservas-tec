@@ -43,7 +43,8 @@ const transporter = nodemailer.createTransport({
     },
     tls: {
         rejectUnauthorized: false
-    }
+    },
+    family: 4 // Forzar IPv4
 });
 // Función auxiliar para enviar el correo a Omar
 async function enviarCorreoOmar(detalles) {
