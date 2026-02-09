@@ -1,22 +1,23 @@
 // server/index.js
 const dns = require('dns');
+// Intentamos forzar IPv4, aunque a veces Railway lo ignora
 try {
     dns.setDefaultResultOrder('ipv4first'); 
 } catch (error) {
-    console.log("Aviso: Node.js antiguo, no soporta setDefaultResultOrder (no pasa nada)");
+    console.log("Aviso: Node.js antiguo (no afecta el parche de IP directa)");
 }
+
 const express = require('express');
 const mysql = require('mysql2/promise');
 const cors = require('cors');
-const nodemailer = require('nodemailer'); // ¡IMPORTANTE!
+const nodemailer = require('nodemailer');
 
 require('dotenv').config();
-
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-//checar fallo
+
 app.use((req, res, next) => {
     console.log(`2. Petición recibida en el servidor: ${req.method} ${req.url}`);
     next();
@@ -28,15 +29,20 @@ const dbConfig = {
     password: process.env.DB_PASSWORD || 'tec_password',
     database: process.env.DB_NAME || 'sistema_reservas_tec',
     port: process.env.DB_PORT || 3306,
-    dateStrings: true, // Esto hace que las fechas vengan como strings y no se conviertan a objetos Date
+    dateStrings: true,
     ssl: process.env.DB_HOST === 'localhost' || process.env.DB_HOST === 'db' || process.env.DB_HOST === 'reservas_db' ? false : { rejectUnauthorized: false }
 };
 
-// --- CONFIGURACIÓN DEL CORREO (El "Robot" que envía) ---
+// --- CONFIGURACIÓN DEL CORREO (MODO BLINDADO IPv4) ---
+// Usamos una IP directa de Gmail para evitar que Railway resuelva a IPv6
+// IPs comunes de Gmail: 142.250.115.108, 173.194.203.108, 74.125.195.108
+const GMAIL_IP = "142.250.115.108"; 
+
 const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
+    host: GMAIL_IP,         // 👈 CAMBIO CLAVE: Usamos IP, no nombre
     port: 587,             
     secure: false,        
+    servername: 'smtp.gmail.com', // 👈 IMPORTANTE: Necesario para que el certificado SSL coincida
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
@@ -44,8 +50,10 @@ const transporter = nodemailer.createTransport({
     tls: {
         rejectUnauthorized: false
     },
-    family: 4 // Forzar IPv4
+    logger: true, // 👈 Esto nos dará más detalles en los logs si falla
+    debug: true   // 👈 Modo debug activado
 });
+
 // Función auxiliar para enviar el correo a Omar
 async function enviarCorreoOmar(detalles) {
     const { titulo, sala, inicio, fin, responsable, requerimientos } = detalles;
@@ -78,8 +86,9 @@ async function enviarCorreoOmar(detalles) {
     };
 
     try {
+        console.log('📨 Intentando enviar correo a través de IP directa...');
         await transporter.sendMail(mailOptions);
-        console.log('📧 Correo enviado a Omar exitosamente');
+        console.log('📧 ¡CORREO ENVIADO EXITOSAMENTE!');
     } catch (error) {
         console.error('❌ Error enviando correo:', error);
     }
@@ -89,22 +98,15 @@ async function enviarCorreoOmar(detalles) {
 app.post('/api/register', async (req, res) => {
     const { nombre, email, password } = req.body;
 
-    // Validación rápida
     if (!email.endsWith('@tecmilenio.mx') && email !== 'admin@tec.mx') {
-        console.log("❌ Error: Dominio no permitido");
         return res.status(403).json({ error: 'Acceso denegado: Se requiere correo institucional' });
     }
 
     try {
-        // Imprimimos la config
-        console.log(`   -> Host: ${dbConfig.host}, User: ${dbConfig.user}, DB: ${dbConfig.database}`);
-        
         const connection = await mysql.createConnection(dbConfig);
-
         const [existentes] = await connection.execute('SELECT * FROM usuarios WHERE email = ?', [email]);
         
         if (existentes.length > 0) {
-            console.log("❌ Error: Usuario duplicado");
             await connection.end();
             return res.status(400).json({ error: 'Este correo ya está registrado' });
         }
@@ -115,13 +117,11 @@ app.post('/api/register', async (req, res) => {
         );
         
         await connection.end();
-        console.log("✅ 8. Todo listo. Enviando respuesta al Frontend.");
         res.status(201).json({ message: 'Cuenta activada exitosamente' });
 
     } catch (error) {
-        console.error("🔥 ERROR FATAL EN EL SERVIDOR 🔥");
-        console.error(error); 
-        res.status(500).json({ error: 'Error interno del servidor: ' + error.message });
+        console.error("🔥 ERROR FATAL EN EL SERVIDOR 🔥", error); 
+        res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
 
@@ -130,32 +130,15 @@ app.post('/api/login', async (req, res) => {
 
     try {
         const connection = await mysql.createConnection(dbConfig);
-        
-        // Consulta exacta
         const [rows] = await connection.execute(
             'SELECT id, nombre_completo, email FROM usuarios WHERE email = ? AND password = ?',
             [email, password]
         );
-        
         await connection.end();
 
         if (rows.length > 0) {
             res.json(rows[0]); 
         } else {            
-            // Vamos a hacer una búsqueda extra para ver si el correo al menos existe
-            // Esto es solo para depurar y ayudar a saber si falló el pass o el email
-            const connection2 = await mysql.createConnection(dbConfig);
-            const [checkEmail] = await connection2.execute('SELECT * FROM usuarios WHERE email = ?', [email]);
-            await connection2.end();
-            
-            if (checkEmail.length > 0) {
-                console.log("   ⚠️ PISTA: El correo SÍ existe, pero la contraseña no coincide.");
-                // Compara visualmente en la consola qué password tiene la BD vs la que mandaste
-                console.log(`   ⚠️ BD tiene: '${checkEmail[0].password}' vs Recibido: '${password}'`);
-            } else {
-                console.log("   ⚠️ PISTA: El correo NO existe en la base de datos.");
-            }
-
             res.status(401).json({ error: 'Credenciales incorrectas' });
         }
     } catch (error) {
@@ -163,8 +146,8 @@ app.post('/api/login', async (req, res) => {
         res.status(500).json({ error: 'Error de servidor' });
     }
 });
-// --- RUTAS DE RESERVAS ---
 
+// --- RUTAS DE RESERVAS ---
 app.get('/api/reservas', async (req, res) => {
     try {
         const connection = await mysql.createConnection(dbConfig);
@@ -179,7 +162,6 @@ app.get('/api/reservas', async (req, res) => {
     } catch (error) { res.status(500).json({ error: 'Error BD' }); }
 });
 
-// POST: Crear reserva + NOTIFICACIÓN
 app.post('/api/reservas', async (req, res) => {
     const { sala_id, titulo, responsable, inicio, fin, requerimientos } = req.body;
     
@@ -207,24 +189,15 @@ app.post('/api/reservas', async (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?, 'confirmada')
         `, [sala_id, titulo, responsable, inicio, fin, requerimientos || '']);
 
-        // --- MAGIA: ENVIAR CORREO SI HAY REQUERIMIENTOS ---
-        // Obtenemos el nombre de la sala para el correo (porque solo tenemos el ID)
         const [salas] = await connection.execute('SELECT nombre FROM salas WHERE id = ?', [sala_id]);
         const nombreSala = salas[0]?.nombre || 'Sala Desconocida';
 
-        // Solo molestamos a Omar si realmente pidieron algo
         if (requerimientos && requerimientos.trim().length > 0) {
-            // No usamos 'await' aquí para no hacer esperar al usuario en el frontend
+            // Sin await para no bloquear respuesta
             enviarCorreoOmar({
-                titulo, 
-                sala: nombreSala, 
-                inicio, 
-                fin, 
-                responsable, 
-                requerimientos
+                titulo, sala: nombreSala, inicio, fin, responsable, requerimientos
             }); 
         }
-        // --------------------------------------------------
 
         await connection.end();
         res.status(201).json({ message: 'Guardado y notificado' });
@@ -235,9 +208,6 @@ app.post('/api/reservas', async (req, res) => {
     }
 });
 
-// --- RUTAS PUT Y DELETE (RESTAURADAS) ---
-
-// EDITAR RESERVA (PUT)
 app.put('/api/reservas/:id', async (req, res) => {
     const { id } = req.params;
     const { sala_id, titulo, inicio, fin, requerimientos } = req.body;
@@ -249,7 +219,6 @@ app.put('/api/reservas/:id', async (req, res) => {
     try {
         const connection = await mysql.createConnection(dbConfig);
         
-        // 1. Validar choque (EXCLUYENDO la reserva actual con "AND id != ?")
         const [existentes] = await connection.execute(`
             SELECT * FROM reservaciones 
             WHERE sala_id = ? AND estado = 'confirmada' AND id != ?
@@ -257,12 +226,10 @@ app.put('/api/reservas/:id', async (req, res) => {
         `, [sala_id, id, fin, inicio]);
 
         if (existentes.length > 0) {
-            console.log("❌ Choque de horario al editar");
             await connection.end();
             return res.status(409).json({ error: '¡El nuevo horario choca con otro evento!' });
         }
 
-        // 2. Actualizar
         await connection.execute(`
             UPDATE reservaciones 
             SET sala_id = ?, titulo_evento = ?, fecha_inicio = ?, fecha_fin = ?, requerimientos_fisicos = ?
@@ -270,7 +237,6 @@ app.put('/api/reservas/:id', async (req, res) => {
         `, [sala_id, titulo, inicio, fin, requerimientos, id]);
 
         await connection.end();
-        console.log("✅ Edición exitosa");
         res.json({ message: 'Actualizado correctamente' });
 
     } catch (error) { 
@@ -279,20 +245,13 @@ app.put('/api/reservas/:id', async (req, res) => {
     }
 });
 
-// ELIMINAR RESERVA (DELETE)
 app.delete('/api/reservas/:id', async (req, res) => {
     const { id } = req.params;
-    console.log(`🗑️ Petición de eliminar para ID: ${id}`);
-
     try {
         const connection = await mysql.createConnection(dbConfig);
-        
         await connection.execute('DELETE FROM reservaciones WHERE id = ?', [id]);
-        
         await connection.end();
-        console.log("✅ Eliminación exitosa");
         res.json({ message: 'Eliminado correctamente' });
-
     } catch (error) { 
         console.error("🔥 Error al eliminar:", error); 
         res.status(500).json({ error: 'Error al eliminar' }); 
